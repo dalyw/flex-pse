@@ -25,16 +25,11 @@ exception hierarchy.
    evaluate EECO on a **fixed, realized** aggregate-power numpy array to compute
    the TRUE (de-relaxed) cost — the user-facing reported number.
 
-Because EECO convex-relaxes a non-convex pricing structure, the in-objective
-total is only a proxy for the post-hoc true bill for most tiered charges.
-EECO prices a *top* tier at one constant rate exactly, with no
-``consumption_estimate`` needed. Any other tier — a middle tier, or one whose
-rate is not uniform across its own window — is dropped from the objective
-entirely and silently without an estimate, including a base tier that shares
-its ``name`` with a higher one, so the proxy **understates** the true bill for
-those. With an estimate, EECO's relaxation prices such a tier instead, but only
-approximately, so the proxy can then land on **either side** of the true bill.
-The raw solver objective is never the user-facing cost.
+The in-objective total is only a proxy for the true bill when the tariff has
+tiered charges. EECO prices a top tier at one constant rate exactly. Any other
+tier is dropped from the objective unless a ``consumption_estimate`` is
+given, and is priced only approximately with one. The raw solver objective
+is never the user-facing cost.
 
 **Units.** Electrical power is a **kW** series and fuel usage is a **volumetric
 m³/hr** series — always, since fuel is metered and billed on volume. Both are
@@ -878,12 +873,7 @@ def _add_utility_cost(
         dr_config: DR container (v0: stored via the no-op hook only).
         prorate: Prorate monthly-assessed demand and fixed charges to the horizon
             (see :func:`monthly_scale_factor`).
-        consumption_estimate: Estimated total consumption over the horizon,
-            keyed by EECO utility (``"electric"``/``"gas"``; kWh / m³). A top
-            tier at one constant rate is priced exactly by EECO regardless; any
-            other tier (a middle tier, or one whose rate varies within its own
-            window) prices at $0 in the objective without an estimate (EECO
-            does not warn), and only approximately with one.
+        consumption_estimate: See :func:`add_operating_cost`.
 
     Returns:
         The renamed :class:`OperatingCostHandles`.
@@ -998,7 +988,7 @@ def add_electricity_cost(
         dr_config: Optional DR container (v0: no constraints built).
         prorate: Prorate monthly demand and fixed charges to the horizon length
             (see :func:`monthly_scale_factor`).
-        consumption_estimate: See :func:`_add_utility_cost`; only the
+        consumption_estimate: See :func:`add_operating_cost`; only the
             ``"electric"`` entry, if any, applies here.
 
     Returns:
@@ -1053,7 +1043,7 @@ def add_fuel_cost(
         dr_config: Optional DR container (v0: no constraints built).
         prorate: Prorate monthly demand and fixed charges to the horizon length
             (see :func:`monthly_scale_factor`).
-        consumption_estimate: See :func:`_add_utility_cost`; only the
+        consumption_estimate: See :func:`add_operating_cost`; only the
             entry for ``fuel_type``'s EECO utility, if any, applies here.
 
     Returns:
@@ -1128,8 +1118,9 @@ def add_operating_cost(
             units); defaults to ``block.fuel_usage`` if present, else the fuel leg
             is skipped.
         dr_config: Optional DR container (v0: no constraints built).
-        consumption_estimate: See :func:`_add_utility_cost`; routed to
-            each leg's matching utility entry.
+        consumption_estimate: Estimated total consumption over the horizon,
+            keyed by EECO utility (``"electric"``/``"gas"``; kWh / m³). EECO
+            needs it to price any tier other than a flat top tier.
 
     Returns:
         A combined :class:`OperatingCostHandles`: ``energy_cost``,

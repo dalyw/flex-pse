@@ -747,11 +747,6 @@ def test_report_cost_breakdown_shape():
     )
     assert report.total == pytest.approx(report.operating.total + report.capital.total)
 
-    relaxed = pyo.value(m.costing.opex.electricity_cost + m.costing.opex.fuel_cost)
-    assert m.costing.relaxation_gap(m) == pytest.approx(
-        report.operating.electricity + report.operating.fuel - relaxed
-    )
-
 
 @pytest.mark.unit
 def test_mode_toggles():

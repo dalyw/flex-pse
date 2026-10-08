@@ -14,7 +14,6 @@ import pandas as pd
 import pyomo.environ as pyo
 import pytest
 from pyomo.environ import units as pyunits
-from pyomo.repn import generate_standard_repn
 
 from flexcore.exceptions import FlexConfigError
 from flexcore.solvers import ProblemClass, classify
@@ -268,63 +267,46 @@ def _tiered_tariff():
     return load_tariff([base, tier2])
 
 
-def _tier_coefficient(block: pyo.Block, limit: int) -> float:
-    """The per-step price coefficient EECO built for one tiered charge key.
-
-    Only the *non-exact* tier path (a finite ``next_limit``) builds a
-    ``_multiply_constraint`` at all; a zero coefficient there is dropped
-    entirely by ``generate_standard_repn``, so no term found means ``0.0``,
-    not "not applicable".
-    """
-    for con in block.component_objects(pyo.Constraint, active=True):
-        if f"_{limit}_multiply_constraint" not in con.name:
-            continue
-        repn = generate_standard_repn(con[0].body)
-        terms = {
-            var.name: coef
-            for var, coef in zip(repn.linear_vars, repn.linear_coefs, strict=True)
-        }
-        return next((abs(c) for n, c in terms.items() if "multiply" not in n), 0.0)
-    raise AssertionError(f"no _{limit}_multiply_constraint on {block.name}")
-
-
-@pytest.mark.unit
+@pytest.mark.component
+@pytest.mark.needs_highs
 @pytest.mark.parametrize(
-    ("consumption_estimate", "expected"),
-    [(None, 0.0), ({"electric": 120000.0}, 0.10)],
+    ("consumption_estimate", "gap"), [(None, 5000.0), ({"electric": 120000.0}, 0.0)]
 )
-def test_consumption_estimate_prices_shared_name_base_tier(
-    consumption_estimate, expected
-):
+def test_consumption_estimate_prices_shared_name_base_tier(consumption_estimate, gap):
     """A base tier linked to a higher one is dropped from the objective without
-    an estimate, and priced at its rate once the estimate is forwarded to EECO."""
-    m = pyo.ConcreteModel()
-    m.step = pyo.RangeSet(0, _N24 - 1)
-    m.agg = pyo.Var(m.step, initialize=5000.0)
-    add_operating_cost(
+    an estimate (its $5000 is missing), and priced once one is forwarded to EECO."""
+    from flexcore.solvers import get_solver
+
+    tariff = _tiered_tariff()
+    index = pd.date_range("2025-07-01", periods=_N24, freq="h")
+    load = np.full(_N24, 5000.0)
+    m = _build_toy_model(load)
+    handles = add_operating_cost(
         block=m,
         electrical_power=m.agg,
-        time_index=pd.date_range("2025-07-01", periods=_N24, freq="h"),
+        time_index=index,
         dt_hours=1.0,
-        tariff=_tiered_tariff(),
+        tariff=tariff,
         consumption_estimate=consumption_estimate,
     )
-    assert _tier_coefficient(m, 0) == pytest.approx(expected)
+    m.objective = pyo.Objective(expr=handles.total_operating_cost, sense=pyo.minimize)
+    get_solver(model=m, prefer="highs").solve(m)
+
+    true_cost = evaluate_cost(load, tariff, dt_hours=1.0, time_index=index)
+    assert true_cost - pyo.value(handles.total_operating_cost) == pytest.approx(gap)
 
 
 @pytest.mark.unit
 def test_consumption_estimate_unknown_utility_rejected():
     """A misspelled utility key raises instead of being silently ignored."""
-    m = pyo.ConcreteModel()
-    m.step = pyo.RangeSet(0, _N24 - 1)
-    m.agg = pyo.Var(m.step, initialize=5000.0)
+    m = _build_toy_model(np.full(_N24, 5000.0))
     with pytest.raises(FlexConfigError, match="electricity"):
         add_operating_cost(
             block=m,
             electrical_power=m.agg,
             time_index=pd.date_range("2025-07-01", periods=_N24, freq="h"),
             dt_hours=1.0,
-            tariff=_tiered_tariff(),
+            tariff=_flat_two_utility_tariff(),
             consumption_estimate={"electricity": 120000.0},
         )
 

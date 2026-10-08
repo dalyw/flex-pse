@@ -434,8 +434,8 @@ class FlexCostingData(FlowsheetCostingBlockData):
         ConfigValue(
             default=None,
             description="Estimated total consumption over the horizon, keyed by "
-            "EECO utility ('electric'/'gas'; kWh / m**3). Without it, a tiered "
-            "tariff charge prices at $0. With it, EECO uses a convex relaxation.",
+            "EECO utility ('electric'/'gas'; kWh / m**3). EECO needs it to price "
+            "any tier other than a flat top tier.",
         ),
     )
     CONFIG.declare(
@@ -1512,18 +1512,9 @@ class FlexCostingData(FlowsheetCostingBlockData):
     def relaxation_gap(self, model, *, prev_demand_dict=None) -> float:
         """How much the in-objective proxy diverges from the reported bill.
 
-        Positive means the objective **understated** the reported bill — the
-        case when a tariff has a tiered charge and no ``consumption_estimate``
-        was given, so EECO's relaxation dropped it from the objective entirely.
-        Negative means the objective overstated it, which a poorly chosen
-        estimate can also cause. A natively priced carrier contributes 0, since
-        its in-objective constraint is already exact.
-
-        Post-solve only: on an unsolved model ``opex.electricity_cost``/
-        ``opex.fuel_cost`` sit at their initial value (0), so the gap equals the
-        whole reported bill. With ``prev_demand_dict`` the reported bill carries
-        the rolling-horizon demand offset that the in-objective proxy does not,
-        so the gap then also reflects that offset.
+        Positive means the objective understated the reported bill (EECO
+        dropped a tiered charge); negative means it overstated it. Post-solve
+        only: on an unsolved model the gap is the whole reported bill.
 
         Args:
             model: The solved model (see :meth:`report_cost`).
