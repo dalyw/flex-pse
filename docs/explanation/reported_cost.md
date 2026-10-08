@@ -44,18 +44,18 @@ reading a bill.
 flex-pse doesn't do any tariff math of its own. Every dollar figure, whether
 energy charges, demand charges, tiers or fixed fees, comes from
 [EECO](https://pypi.org/project/eeco/). The module
-{mod}`flexops.costing.opex` is the glue. It loads tariffs, hands EECO the
+`flexops.costing.opex` is the glue. It loads tariffs, hands EECO the
 power series in the shape it expects, gives the results stable flex-pse
 names, and turns EECO's errors into flex-pse exceptions. It's also the only
 file that imports `eeco`, so when EECO's API changes there's one place to fix.
 
 EECO gets called twice in a run:
 
-- **While building the model.** {func}`~flexops.costing.opex.add_operating_cost`
+- **While building the model.** {func}`~flexops.costing.add_operating_cost`
   asks EECO for the relaxed cost expression that goes into the objective.
   That's the proxy described above.
-- **After the solve.** {func}`~flexops.costing.opex.evaluate_cost` and
-  {func}`~flexops.costing.opex.evaluate_fuel_cost` run the full tariff on the
+- **After the solve.** {func}`~flexops.costing.evaluate_cost` and
+  {func}`~flexops.costing.evaluate_fuel_cost` run the full tariff on the
   power values the solve settled on. That's the number `report_cost` gives you.
 
 ## Tiered charges and `consumption_estimate`
