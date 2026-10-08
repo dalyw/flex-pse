@@ -176,7 +176,8 @@ The raw solver objective is never reported as the user-facing cost.
 
    EECO prices a top tier (no higher tier above it) at one constant rate
    exactly. Any other tiered energy or demand charge is dropped from the
-   objective, without warning, unless EECO is given a consumption estimate, so
+   objective unless EECO is given a consumption estimate (flex-pse logs a
+   warning when one is missing), so
    the in-objective total then understates the true bill. That includes a base
    tier, since EECO links the tiers of one charge by their shared ``name``.
 
@@ -186,7 +187,7 @@ The raw solver objective is never reported as the user-facing cost.
    to price such a tier. The result is approximate and can land on either side
    of the true bill;
    :meth:`~flexops.costing.flex_costing.FlexCostingData.relaxation_gap` reports
-   by how much.
+   by how much, given the solver results of an optimal solve.
 
    Tier limits are monthly while the estimate covers the horizon, so on a
    sub-month horizon a tier only triggers if the horizon alone exceeds its

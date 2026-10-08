@@ -12,7 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`MultilinearSurrogate` uses a single indexed Var for coefficients.** Instead of creating one scalar `pyo.Var` per coefficient (requiring `alphanum_label_from_name` sanitization that could collide), `build()` now creates one `coefficient_vars = pyo.Var(index_set, initialize=1.0)` keyed by the raw coefficient strings including `"intercept"`. Raw keys like `"flow_out*outlet_state.pressure"` are preserved exactly.
 - **`update_parameters` works on surrogate coefficients.** Registered surrogate coefficient Vars (including indexed-Var entries) can now be mutated in place through the standard `update_parameters` path. The fitted constraint body sees new values without any component rebuild.
 - **Comprehensive tests for surrogate block lifecycle.** New tests cover switching among 3+ surrogate blocks with correct activate/deactivate semantics, `list_surrogate_blocks` and `current_surrogate_block` with and without `relation_name`, named-relation fix/unfix, `CoefficientRegistry` duplicate/non-Var/bulk registration, and `update_parameters` on surrogate coefficients.
-- **`FlexCostingData.relaxation_gap(model)`** returns `reported bill - in-objective proxy` post-solve (positive: the objective understated the bill).
+- **`FlexCostingData.relaxation_gap(model, results)`** returns `reported bill - in-objective proxy` post-solve (positive: the objective understated the bill). It raises `FlexSolverError` if `results` is not an optimal solve.
 
 ### Changed
 
@@ -22,7 +22,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **A tiered tariff charge could silently price at $0 in the objective** (issue #73). `opex.py` never forwarded a consumption estimate to EECO, which without one drops every tier other than a flat top tier. The new `CostingConfig.consumption_estimate` / `FlexCosting(consumption_estimate=...)`, a mapping of EECO utility (`"electric"`/`"gas"`) to the estimated total consumption over the horizon (kWh / m^3), is forwarded through `add_electricity_cost`/`add_fuel_cost`/`add_operating_cost`. The default `None` keeps the previous behaviour.
+- **A tiered tariff charge could silently price at $0 in the objective** (issue #73). `opex.py` never forwarded a consumption estimate to EECO, which without one drops every tier other than a flat top tier. The new `CostingConfig.consumption_estimate` / `FlexCosting(consumption_estimate=...)`, a mapping of EECO utility (`"electric"`/`"gas"`) to the estimated total consumption over the horizon (kWh / m^3), is forwarded through `add_electricity_cost`/`add_fuel_cost`/`add_operating_cost`. The default `None` keeps the previous behaviour. A warning is now logged when a tariff tier would be zeroed because its utility has no estimate, and `CostingConfig.consumption_estimate` only accepts the keys `"electric"` and `"gas"`.
 
 ## [0.1.0] - 2026-09-04
 

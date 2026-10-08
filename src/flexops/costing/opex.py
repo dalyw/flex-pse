@@ -903,6 +903,21 @@ def _add_utility_cost(
             field="consumption_estimate",
             value=unknown,
         )
+    if utility not in consumption_estimate and any(
+        not np.isinf(
+            _eeco_costs.get_next_limit(
+                key.rsplit("_", 1)[0], float(key.rsplit("_", 1)[1]), charge_dict
+            )
+        )
+        for key in charge_dict
+        if key.startswith(f"{utility}_")
+    ):
+        _log.warning(
+            "Tariff has tiered %r charges but no consumption_estimate[%r]; "
+            "those tiers price at 0 in the objective.",
+            utility,
+            utility,
+        )
     itemized, _ = _eeco_costs.calculate_itemized_cost(
         charge_dict,
         {utility: power},

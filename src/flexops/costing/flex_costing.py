@@ -59,7 +59,7 @@ from pyomo.environ import units as pyunits
 from pyomo.util.check_units import assert_units_consistent, assert_units_equivalent
 
 from flexcore import nomenclature as nm
-from flexcore.exceptions import FlexConfigError
+from flexcore.exceptions import FlexConfigError, FlexSolverError
 from flexcore.logger import get_logger
 from flexops.core.registration import iter_io_registry
 from flexops.costing.opex import (
@@ -1509,20 +1509,28 @@ class FlexCostingData(FlowsheetCostingBlockData):
             currency=str(self.base_currency),
         )
 
-    def relaxation_gap(self, model, *, prev_demand_dict=None) -> float:
-        """How much the in-objective proxy diverges from the reported bill.
+    def relaxation_gap(self, model, results, *, prev_demand_dict=None) -> float:
+        """Return how much the in-objective proxy diverges from the reported bill.
 
         Positive means the objective understated the reported bill (EECO
-        dropped a tiered charge); negative means it overstated it. Post-solve
-        only: on an unsolved model the gap is the whole reported bill.
+        dropped a tiered charge); negative means it overstated it.
 
         Args:
             model: The solved model (see :meth:`report_cost`).
+            results: The solver results returned by solving ``model``.
             prev_demand_dict: See :meth:`report_cost`.
 
         Returns:
             ``reported bill − in-objective proxy``, in the report's currency.
+
+        Raises:
+            FlexSolverError: If ``results`` is not an optimal solve.
         """
+        if not pyo.check_optimal_termination(results):
+            raise FlexSolverError(
+                "relaxation_gap needs an optimally solved model; got termination "
+                f"{results.solver.termination_condition}."
+            )
         operating = self.report_cost(model, prev_demand_dict=prev_demand_dict).operating
         relaxed = pyo.value(self.opex.electricity_cost + self.opex.fuel_cost)
         return operating.electricity + operating.fuel - relaxed

@@ -287,11 +287,13 @@ class CostingConfig(_StrictModel):
         default=None,
         description="Optional demand-response container (containers-only in v0).",
     )
-    consumption_estimate: dict[str, NonNegativeFloat] | None = Field(
-        default=None,
-        description="Estimated total consumption over the horizon, keyed by EECO "
-        "utility ('electric'/'gas'; kWh / m^3). EECO needs it to price any tier "
-        "other than a flat top tier.",
+    consumption_estimate: dict[Literal["electric", "gas"], NonNegativeFloat] | None = (
+        Field(
+            default=None,
+            description="Estimated total consumption over the horizon, keyed by EECO "
+            "utility ('electric'/'gas'; kWh / m^3). EECO needs it to price any tier "
+            "other than a flat top tier.",
+        )
     )
     fixed_operating_cost: float = Field(
         default=0.0,

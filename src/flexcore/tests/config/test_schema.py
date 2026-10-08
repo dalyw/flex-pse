@@ -189,6 +189,15 @@ def test_surrogate_type_rejects_an_unknown_name():
 
 
 @pytest.mark.unit
+def test_consumption_estimate_rejects_an_unknown_utility():
+    """A misspelled utility key fails config validation."""
+    with pytest.raises(ValidationError):
+        CostingConfig(
+            tariff_source="tariff.json", consumption_estimate={"electricity": 1.0}
+        )
+
+
+@pytest.mark.unit
 def test_load_surrogate_source_fills_in_the_spec(tmp_path):
     """A sidecar file supplies the data the spec did not inline."""
     (tmp_path / "curve.json").write_text(

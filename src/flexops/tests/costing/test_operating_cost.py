@@ -7,6 +7,7 @@ in-objective cost on a toy model, solve the trivial LP with HiGHS, and check the
 relaxed proxy against the post-hoc bill, the DR no-op, and LP classification.
 """
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -294,6 +295,25 @@ def test_consumption_estimate_prices_shared_name_base_tier(consumption_estimate,
 
     true_cost = evaluate_cost(load, tariff, dt_hours=1.0, time_index=index)
     assert true_cost - pyo.value(handles.total_operating_cost) == pytest.approx(gap)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("consumption_estimate", "warns"), [(None, True), ({"electric": 120000.0}, False)]
+)
+def test_tiered_charge_is_not_silently_zeroed(consumption_estimate, warns, caplog):
+    """A tier EECO zeroes without an estimate logs a warning."""
+    m = _build_toy_model(np.full(_N24, 5000.0))
+    with caplog.at_level(logging.WARNING, logger="flexops.costing.opex"):
+        add_operating_cost(
+            block=m,
+            electrical_power=m.agg,
+            time_index=pd.date_range("2025-07-01", periods=_N24, freq="h"),
+            dt_hours=1.0,
+            tariff=_tiered_tariff(),
+            consumption_estimate=consumption_estimate,
+        )
+    assert ("consumption_estimate" in caplog.text) is warns
 
 
 @pytest.mark.unit

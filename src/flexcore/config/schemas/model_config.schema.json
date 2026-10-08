@@ -33,6 +33,12 @@
                 "minimum": 0,
                 "type": "number"
               },
+              "propertyNames": {
+                "enum": [
+                  "electric",
+                  "gas"
+                ]
+              },
               "type": "object"
             },
             {
