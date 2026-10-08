@@ -1,53 +1,6 @@
 """EECO integration: the sole ``eeco`` import point for flex-pse.
 
-flex-pse does **not** build its own tariff/cost engine. Tariffs, demand charges,
-tiered/fixed charges, and both the optimization-time and post-optimization cost
-computations come from the external **EECO** package (``eeco`` on PyPI). This
-module is the thin flex-pse interface around it — loaders, a CSV→dict tariff
-converter, pandas signal helpers, the in-objective Pyomo bridge, and the
-post-optimization evaluator — and, by convention, the **only** file in the
-codebase that imports ``eeco``. Localizing the import means one file to fix
-when EECO's API moves.
-
-**EECO owns the math; this file is glue.** No cost arithmetic lives here — no
-price-lookup loops, no demand-charge epigraphs, no kWh conversion. Every dollar
-figure is produced by ``eeco.costs``; the wrappers only marshal inputs, rename
-outputs to stable flex-pse names, and translate errors into the flex-pse
-exception hierarchy.
-
-**Two ways EECO is used**:
-
-1. *In-objective* — :func:`add_operating_cost` (the facility umbrella over the
-   single-utility :func:`add_electricity_cost` / :func:`add_fuel_cost`) asks EECO
-   to build the **convex-relaxed** operating-cost ``Expression`` on a Pyomo block.
-   This is the tractable proxy the scheduler minimizes, not the reported bill.
-2. *Post-optimization* — :func:`evaluate_cost` / :func:`evaluate_fuel_cost`
-   evaluate EECO on a **fixed, realized** aggregate-power numpy array to compute
-   the TRUE (de-relaxed) cost — the user-facing reported number.
-
-The in-objective total is only a proxy for the true bill when the tariff has
-tiered charges. EECO prices a top tier at one constant rate exactly. Any other
-tier is dropped from the objective unless a ``consumption_estimate`` is
-given, and is priced only approximately with one. The raw solver objective
-is never the user-facing cost.
-
-**Units.** Electrical power is a **kW** series and fuel usage is a **volumetric
-m³/hr** series — always, since fuel is metered and billed on volume. Both are
-passed to ``eeco`` with their units stated explicitly. EECO converts to energy
-(kWh / m³) internally from the timestep, so ``dt_hours`` is passed exactly once —
-never multiply by it here. flex-pse applies **no** heating value: if a tariff
-prices gas on an energy basis, EECO converts it with its own fuel heating-value
-assumption.
-
-**Timezones / DST.** EECO reasons in naive local wall-clock time (its charge
-windows are keyed on ``datetime.hour``/``weekday``/``month`` with no tz
-conversion). flex-pse v0 is consistently naive-local (matching ``TimeBlock``);
-tz-aware indices are rejected at the wrapper boundary with :class:`FlexDataError`.
-
-**Demand response.** v0 is **containers-only**: :class:`DRConfig`
-holds a loaded DR program, and the internal :func:`_build_dr` hook is a no-op.
-Supplying a DR file never changes the objective. EECO 0.4.1 exposes no DR API,
-so the DR file format is a flex-pse placeholder loaded into the container only.
+See :doc:`/explanation/reported_cost` for how EECO prices the objective and the report.
 """
 
 import calendar
