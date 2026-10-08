@@ -17,7 +17,7 @@ when EECO's API moves.
 EECO owns all cost math. These wrappers are glue. They marshal inputs, rename
 EECO's outputs to stable flex-pse names, and translate EECO/pandas errors into
 the flex-pse exception hierarchy. A flex-pse tariff object is simply an EECO
-``rate_data`` ``DataFrame`` (EECO 0.4.0 has no tariff loader of its own, so its
+``rate_data`` ``DataFrame`` (EECO 0.4.1 has no tariff loader of its own, so its
 cost functions consume that frame directly).
 
 .. note:: **EECO is only needed for tariffs.** The ``eeco`` import is soft, so
@@ -91,7 +91,7 @@ Tariff signal helpers
 
 Plain pandas signals over a tariff, for writing logic or heuristic
 constraints. Each is a flex-pse helper built on EECO's ``get_charge_dict``
-charge arrays (the source of the price data). EECO 0.4.0 exposes no per-stamp
+charge arrays (the source of the price data). EECO 0.4.1 exposes no per-stamp
 price accessor.
 
 .. autosummary::
@@ -129,7 +129,7 @@ conversion as a plain float factor and constrains its own dimensionless Vars
 to the series it is given. The builders for a single utility,
 :func:`add_electricity_cost` and :func:`add_fuel_cost`, remain available for
 building one leg alone. :func:`add_fuel_cost` takes a ``fuel_type`` (default
-``"gas"``, the only value EECO 0.4.0 supports). A hydrogen utility is
+``"gas"``, the only value EECO 0.4.1 supports). A hydrogen utility is
 expected upstream and will add a second value.
 
 Post-optimization evaluators
@@ -157,7 +157,7 @@ Demand response (containers-only in v0)
    :class:`DRConfig` holds a loaded DR program so the wiring exists, and the
    internal DR hook is a no-op. Supplying a DR file never changes the
    objective. Building DR event, curtailment, incentive, and capacity
-   constraints comes after v0. EECO 0.4.0 exposes no DR API, so the DR file
+   constraints comes after v0. EECO 0.4.1 exposes no DR API, so the DR file
    format is a flex-pse placeholder loaded into the container only.
 
 In-objective vs. reported cost
@@ -170,11 +170,34 @@ on a **fixed, realized** aggregate power numpy array to compute the TRUE
 (no longer relaxed) cost, the bill the user actually sees (see
 :doc:`../../explanation/reported_cost`).
 
-The relaxation drops the tiered energy surcharge when no consumption estimate
-is supplied, so the in-objective total is a proxy that is **≤ or ≈** the true
-bill computed after the fact. The raw solver objective is never reported as
-the cost the user sees. See :doc:`../../explanation/reported_cost` for why
-that distinction matters to a user.
+The raw solver objective is never reported as the user-facing cost.
+
+.. note:: **Tiered charges and the consumption estimate**
+
+   EECO prices a *top* tier (no higher tier above it) at one constant rate
+   exactly. Any other tiered energy or demand charge — a middle tier, a base
+   tier that shares its ``name`` with a higher one, or a tier whose rate is not
+   uniform across its own window — is dropped from the objective, without
+   warning, unless EECO is given a consumption estimate, so the in-objective
+   total then **understates** the true bill.
+
+   Pass ``consumption_estimate`` (a mapping of EECO utility, ``"electric"`` or
+   ``"gas"``, to an estimated total consumption over the horizon in kWh / m^3)
+   to :func:`add_electricity_cost`/:func:`add_fuel_cost`/:func:`add_operating_cost`,
+   or ``CostingConfig.consumption_estimate`` at the model-config layer, to
+   price such a tier. The relaxation is then active but only approximate, so
+   the in-objective total can land on either side of the true bill. Use
+   :meth:`FlexCostingData.relaxation_gap` to check by how much.
+
+   Two caveats: tier limits are monthly while the estimate is over the
+   *horizon*, so on a sub-month horizon a tier only triggers if the horizon
+   alone exceeds the limit (M12's rolling-horizon carry is the correct fix for
+   that). And for a tiered *demand* charge, EECO converts a scalar estimate into
+   an *average* kW, which can still miss a real peak.
+
+   EECO links a charge's tiers by matching utility, charge type, ``name`` and
+   dates: give every tier of one charge the same ``name``, or EECO will not
+   link them and even a limit-0 base tier will never see a finite next limit.
 
 .. admonition:: Timezones / DST
 

@@ -14,6 +14,7 @@ import pandas as pd
 import pyomo.environ as pyo
 import pytest
 from pyomo.environ import units as pyunits
+from pyomo.repn import generate_standard_repn
 
 from flexcore.exceptions import FlexConfigError
 from flexcore.solvers import ProblemClass, classify
@@ -120,7 +121,11 @@ def test_golden_monthly_bill():
 @pytest.mark.component
 @pytest.mark.needs_highs
 def test_relaxed_leq_or_approx_true():
-    """The relaxed in-objective total is <= or ~= the post-hoc true bill."""
+    """The relaxed in-objective total is <= or ~= the post-hoc true bill.
+
+    The demo tariff's tier2 surcharge is a top tier at one constant rate, which
+    EECO prices exactly, so the two totals match with no consumption_estimate.
+    """
     from flexcore.solvers import get_solver
 
     tariff = load_tariff(_TARIFF_JSON)
@@ -141,6 +146,7 @@ def test_relaxed_leq_or_approx_true():
     relaxed = pyo.value(handles.total_operating_cost)
     true_cost = evaluate_cost(load, tariff, dt_hours=1.0, time_index=index)
     assert relaxed <= true_cost + 1e-3
+    assert true_cost - relaxed == pytest.approx(0.0, abs=0.01)
 
 
 @pytest.mark.component
@@ -233,6 +239,94 @@ def _flat_two_utility_tariff():
         },
     ]
     return load_tariff(records)
+
+
+def _tiered_tariff():
+    """A two-tier electric energy charge, both tiers sharing one ``name``.
+
+    The shared name is what makes EECO link them (``get_next_limit`` matches on
+    utility, type, name and dates), so the base tier also carries a finite
+    ``next_limit`` -- the case in which a missing estimate zeroes *every* tier.
+    """
+    base = {
+        "utility": "electric",
+        "type": "energy",
+        "name": "allday",
+        "month_start": 1,
+        "month_end": 12,
+        "weekday_start": 0,
+        "weekday_end": 6,
+        "hour_start": 0,
+        "hour_end": 24,
+        "basic_charge_limit (metric)": 0,
+        "charge (metric)": 0.10,
+        "units": "$/kWh",
+    }
+    tier2 = dict(
+        base, **{"basic_charge_limit (metric)": 50000, "charge (metric)": 0.20}
+    )
+    return load_tariff([base, tier2])
+
+
+def _tier_coefficient(block: pyo.Block, limit: int) -> float:
+    """The per-step price coefficient EECO built for one tiered charge key.
+
+    Only the *non-exact* tier path (a finite ``next_limit``) builds a
+    ``_multiply_constraint`` at all; a zero coefficient there is dropped
+    entirely by ``generate_standard_repn``, so no term found means ``0.0``,
+    not "not applicable".
+    """
+    for con in block.component_objects(pyo.Constraint, active=True):
+        if f"_{limit}_multiply_constraint" not in con.name:
+            continue
+        repn = generate_standard_repn(con[0].body)
+        terms = {
+            var.name: coef
+            for var, coef in zip(repn.linear_vars, repn.linear_coefs, strict=True)
+        }
+        return next((abs(c) for n, c in terms.items() if "multiply" not in n), 0.0)
+    raise AssertionError(f"no _{limit}_multiply_constraint on {block.name}")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("consumption_estimate", "expected"),
+    [(None, 0.0), ({"electric": 120000.0}, 0.10)],
+)
+def test_consumption_estimate_prices_shared_name_base_tier(
+    consumption_estimate, expected
+):
+    """A base tier linked to a higher one is dropped from the objective without
+    an estimate, and priced at its rate once the estimate is forwarded to EECO."""
+    m = pyo.ConcreteModel()
+    m.step = pyo.RangeSet(0, _N24 - 1)
+    m.agg = pyo.Var(m.step, initialize=5000.0)
+    add_operating_cost(
+        block=m,
+        electrical_power=m.agg,
+        time_index=pd.date_range("2025-07-01", periods=_N24, freq="h"),
+        dt_hours=1.0,
+        tariff=_tiered_tariff(),
+        consumption_estimate=consumption_estimate,
+    )
+    assert _tier_coefficient(m, 0) == pytest.approx(expected)
+
+
+@pytest.mark.unit
+def test_consumption_estimate_unknown_utility_rejected():
+    """A misspelled utility key raises instead of being silently ignored."""
+    m = pyo.ConcreteModel()
+    m.step = pyo.RangeSet(0, _N24 - 1)
+    m.agg = pyo.Var(m.step, initialize=5000.0)
+    with pytest.raises(FlexConfigError, match="electricity"):
+        add_operating_cost(
+            block=m,
+            electrical_power=m.agg,
+            time_index=pd.date_range("2025-07-01", periods=_N24, freq="h"),
+            dt_hours=1.0,
+            tariff=_tiered_tariff(),
+            consumption_estimate={"electricity": 120000.0},
+        )
 
 
 def _two_utility_model(elec_kw: np.ndarray, gas_flow: np.ndarray) -> pyo.ConcreteModel:
